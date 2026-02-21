@@ -55,7 +55,7 @@ class Sequence:
         return self.num_cached_tokens // self.block_size
 
     @property
-    def num_blocks(self): #当前序列占用的逻辑块数量 = (总 token 数量 + 块大小 - 1) // 块大小
+    def num_blocks(self): # 当前序列所需的逻辑块总数 = (总 token 数量 + 块大小 - 1) // 块大小
         return (self.num_tokens + self.block_size - 1) // self.block_size
 
     @property
