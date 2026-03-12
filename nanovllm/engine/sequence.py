@@ -10,7 +10,7 @@ class SequenceStatus(Enum): # 枚举类，用于标识序列的状态
     RUNNING = auto()
     FINISHED = auto()
 
-
+# prompt 转换成内部数据结构 Sequence
 class Sequence:
     block_size = 256 # 分页内存管理的块大小（每个块存储 256 个 Token）
     counter = count()

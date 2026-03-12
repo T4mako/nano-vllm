@@ -11,7 +11,7 @@ from nanovllm.layers.sampler import Sampler
 from nanovllm.utils.context import set_context, get_context, reset_context
 from nanovllm.utils.loader import load_model
 
-
+# ModelRunner 完成真正的推理
 class ModelRunner:
 
     def __init__(self, config: Config, rank: int, event: Event | list[Event]):

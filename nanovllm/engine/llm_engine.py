@@ -11,15 +11,17 @@ from nanovllm.engine.sequence import Sequence
 from nanovllm.engine.scheduler import Scheduler
 from nanovllm.engine.model_runner import ModelRunner
 
-
+# 进行不同请求序列的调度、执行
 class LLMEngine:
 
     def __init__(self, model, **kwargs):
+        # 构造 Config，从 kwargs 里只挑 Config 定义过的字段，避免无关参数污染。
         config_fields = {field.name for field in fields(Config)}
         config_kwargs = {k: v for k, v in kwargs.items() if k in config_fields}
         config = Config(model, **config_kwargs)
-        self.ps = []
-        self.events = []
+        self.ps = [] # 保存子进程对象（Process 列表）
+        self.events = [] # 保存进程同步事件（Event 列表）
+        # 按 tp_size 启动子进程，每个子进程跑一个 ModelRunner ，并用 Event 同步
         ctx = mp.get_context("spawn")
         for i in range(1, config.tensor_parallel_size):
             event = ctx.Event()
@@ -40,22 +42,32 @@ class LLMEngine:
             p.join()
 
     def add_request(self, prompt: str | list[int], sampling_params: SamplingParams):
+        # 把字符串 prompt 编码为 token_id 列表
         if isinstance(prompt, str):
             prompt = self.tokenizer.encode(prompt)
+        # 构造 Sequence 后加入 scheduler
         seq = Sequence(prompt, sampling_params)
         self.scheduler.add(seq)
 
     def step(self):
+        # 调度一个待处理请求
         seqs, is_prefill = self.scheduler.schedule()
+        # 通过模型处理请求，得到每个序列新 token
         token_ids = self.model_runner.call("run", seqs, is_prefill)
+        # 交给 scheduler 做后处理
         self.scheduler.postprocess(seqs, token_ids)
+        # 返回本轮已完成序列输出 + 一个 num_tokens 指标
         outputs = [(seq.seq_id, seq.completion_token_ids) for seq in seqs if seq.is_finished]
         num_tokens = sum(len(seq) for seq in seqs) if is_prefill else -len(seqs)
         return outputs, num_tokens
 
+    # scheduler 是否完成
     def is_finished(self):
         return self.scheduler.is_finished()
 
+    '''
+        核心生成函数，负责添加请求、调度、执行、返回结果
+    '''
     def generate(
         self,
         prompts: list[str] | list[list[int]],

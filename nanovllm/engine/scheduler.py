@@ -4,23 +4,30 @@ from nanovllm.config import Config
 from nanovllm.engine.sequence import Sequence, SequenceStatus
 from nanovllm.engine.block_manager import BlockManager
 
-
+'''
+Scheduler 负责决定哪些 Sequence 应该被推理
+- 时间上，Scheduler 通过一定的策略决定哪一个 Sequence 应当优先被推理
+- 空间上，Scheduler 通过BlockManager 完成每一个 Sequence 的 KV Cache 分配、销毁。
+'''
 class Scheduler:
 
     def __init__(self, config: Config):
         self.max_num_seqs = config.max_num_seqs
         self.max_num_batched_tokens = config.max_num_batched_tokens
         self.eos = config.eos
-        self.block_manager = BlockManager(config.num_kvcache_blocks, config.kvcache_block_size)
-        self.waiting: deque[Sequence] = deque()
-        self.running: deque[Sequence] = deque()
+        self.block_manager = BlockManager(config.num_kvcache_blocks, config.kvcache_block_size) # 分页内存管理
+        self.waiting: deque[Sequence] = deque() # 等待队列
+        self.running: deque[Sequence] = deque() # 运行队列
 
+    # 等待队列和运行队列都为空时，推理完成
     def is_finished(self):
         return not self.waiting and not self.running
 
+    # 添加一个 Sequence 到等待队列
     def add(self, seq: Sequence):
         self.waiting.append(seq)
 
+    # 
     def schedule(self) -> tuple[list[Sequence], bool]:
         # prefill
         scheduled_seqs = []
@@ -57,11 +64,13 @@ class Scheduler:
         self.running.extendleft(reversed(scheduled_seqs))
         return scheduled_seqs, False
 
+    # 抢占一个 Sequence，将其状态设置为 WAITING，并将其从运行队列中移除，加入等待队列头部
     def preempt(self, seq: Sequence):
         seq.status = SequenceStatus.WAITING
         self.block_manager.deallocate(seq)
         self.waiting.appendleft(seq)
 
+    # 后处理 Sequence，将其状态设置为 FINISHED，同时从运行队列中移除
     def postprocess(self, seqs: list[Sequence], token_ids: list[int]) -> list[bool]:
         for seq, token_id in zip(seqs, token_ids):
             seq.append_token(token_id)
