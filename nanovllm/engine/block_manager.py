@@ -79,6 +79,7 @@ class BlockManager: # 负责所有 Block 的生命周期管理（分配、释放
     1. Block 0 (Token 0-15): 计算 Hash B1 (即 A1) -> 命中 Hash A1 -> #100 -> 复用物理块 #100 (ref_count=2)。
     2. Block 1 (Token 16'-31'): 计算 Hash B2 (基于 B1) -> 未命中 (内容不同) -> 分配物理块 #102。
     '''
+    # 每个 sequence 只会执行一侧 allocate
     def allocate(self, seq: Sequence):
         assert not seq.block_table
         h = -1
@@ -97,7 +98,7 @@ class BlockManager: # 负责所有 Block 的生命周期管理（分配、释放
                 if block_id in self.used_block_ids: # 存在且内容匹配 (token_ids 一致)，则 缓存命中 (Cache Hit) 。
                     block = self.blocks[block_id]
                     block.ref_count += 1 # 增加其 ref_count
-                else:
+                else: # hash table 有 block id 但 used_block_ids 已被释放
                     block = self._allocate_block(block_id) # 重新分配新块
             if h != -1:
                 block.update(h, token_ids)
@@ -105,7 +106,7 @@ class BlockManager: # 负责所有 Block 的生命周期管理（分配、释放
             seq.block_table.append(block_id)
 
     def deallocate(self, seq: Sequence):
-        for block_id in reversed(seq.block_table): # 遍历序列持有的所有块，将引用计数减 1
+        for block_id in reversed(seq.block_table): # 反向遍历序列持有的所有块，将引用计数减 1
             block = self.blocks[block_id]
             block.ref_count -= 1
             if block.ref_count == 0: # 引用计数为 0 时，释放块
