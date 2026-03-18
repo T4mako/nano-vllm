@@ -11,7 +11,7 @@ from nanovllm.engine.sequence import Sequence
 from nanovllm.engine.scheduler import Scheduler
 from nanovllm.engine.model_runner import ModelRunner
 
-# 进行不同请求序列的调度、执行
+# 创建推理服务所需的所有模块，提供处理用户请求的接口（generate），并完成请求数据的编码、执行与解码过程
 class LLMEngine:
 
     def __init__(self, model, **kwargs):
@@ -35,6 +35,7 @@ class LLMEngine:
         self.scheduler = Scheduler(config)
         atexit.register(self.exit)
 
+    # 广播调用 ModelRunner.exit ，然后 join 所有子进程，避免僵尸进程
     def exit(self):
         self.model_runner.call("exit")
         del self.model_runner

@@ -11,7 +11,7 @@ from nanovllm.layers.sampler import Sampler
 from nanovllm.utils.context import set_context, get_context, reset_context
 from nanovllm.utils.loader import load_model
 
-# ModelRunner 完成真正的推理
+# ModelRunner 主要完成模型的前向运算
 class ModelRunner:
 
     def __init__(self, config: Config, rank: int, event: Event | list[Event]):
@@ -23,8 +23,8 @@ class ModelRunner:
         self.rank = rank
         self.event = event
 
-        dist.init_process_group("nccl", "tcp://localhost:2333", world_size=self.world_size, rank=rank)
-        torch.cuda.set_device(rank)
+        dist.init_process_group("nccl", "tcp://localhost:2333", world_size=self.world_size, rank=rank) # nccl：让多张卡“快速互相传数据”
+        torch.cuda.set_device(rank) # rank=0 是主控进程（协调、汇总），其他 rank 是工作进程。
         default_dtype = torch.get_default_dtype()
         torch.set_default_dtype(hf_config.torch_dtype)
         torch.set_default_device("cuda")
@@ -46,7 +46,7 @@ class ModelRunner:
                 dist.barrier()
                 self.shm = SharedMemory(name="nanovllm")
                 self.loop()
-
+    # 关闭/释放共享内存、清理 graph 资源、同步 CUDA、销毁进程组。
     def exit(self):
         if self.world_size > 1:
             self.shm.close()
@@ -97,6 +97,7 @@ class ModelRunner:
         self.run(seqs, True)
         torch.cuda.empty_cache()
 
+    # KV Cache 分配逻辑
     def allocate_kv_cache(self):
         config = self.config
         hf_config = config.hf_config
